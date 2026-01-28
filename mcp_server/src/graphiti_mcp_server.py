@@ -405,6 +405,78 @@ async def add_memory(
 
 
 @mcp.tool()
+async def add_memory_sync(
+    name: str,
+    episode_body: str,
+    group_id: str | None = None,
+    source: str = 'text',
+    source_description: str = '',
+    uuid: str | None = None,
+    timeout: float = 600.0,
+) -> SuccessResponse | ErrorResponse:
+    """Add an episode and wait for processing to complete (blocking).
+
+    Unlike add_memory which queues for background processing, this function
+    blocks until the episode is fully processed into the graph.
+
+    Use this when you need confirmation that the episode was successfully
+    processed before continuing (e.g., in ETL pipelines with Trigger.dev).
+
+    Args:
+        name (str): Name of the episode
+        episode_body (str): The content of the episode to persist to memory
+        group_id (str, optional): A unique ID for this graph
+        source (str, optional): Source type ('text', 'json', 'message')
+        source_description (str, optional): Description of the source
+        uuid (str, optional): Optional UUID for the episode
+        timeout (float, optional): Max seconds to wait for processing (default 600 = 10 min)
+
+    Returns:
+        SuccessResponse with episode UUID on success
+        ErrorResponse on failure or timeout
+    """
+    global graphiti_service, queue_service
+
+    if graphiti_service is None or queue_service is None:
+        return ErrorResponse(error='Services not initialized')
+
+    try:
+        effective_group_id = group_id or config.graphiti.group_id
+
+        episode_type = EpisodeType.text
+        if source:
+            try:
+                episode_type = EpisodeType[source.lower()]
+            except (KeyError, AttributeError):
+                logger.warning(f"Unknown source type '{source}', using 'text' as default")
+                episode_type = EpisodeType.text
+
+        episode_uuid = await queue_service.add_episode_sync(
+            group_id=effective_group_id,
+            name=name,
+            content=episode_body,
+            source_description=source_description,
+            episode_type=episode_type,
+            entity_types=graphiti_service.entity_types,
+            uuid=uuid,
+            timeout=timeout,
+        )
+
+        return SuccessResponse(
+            message=f"Episode '{name}' processed successfully in group '{effective_group_id}'",
+            data={'uuid': episode_uuid},
+        )
+
+    except TimeoutError as e:
+        logger.error(f'Timeout processing episode: {str(e)}')
+        return ErrorResponse(error=str(e))
+
+    except Exception as e:
+        logger.error(f'Error processing episode: {str(e)}')
+        return ErrorResponse(error=f'Error processing episode: {str(e)}')
+
+
+@mcp.tool()
 async def search_nodes(
     query: str,
     group_ids: list[str] | None = None,
