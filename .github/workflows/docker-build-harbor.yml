@@ -1,0 +1,104 @@
+name: Build and Push to Harbor
+
+on:
+  push:
+    branches:
+      - deploy
+    tags:
+      - 'v*'
+    paths:
+      - 'mcp_server/**'
+      - 'graphiti_core/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'mcp_server/docker/Dockerfile.standalone'
+      - '.github/workflows/docker-build-harbor.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: harbor.atrvd.com
+
+jobs:
+  lint:
+    runs-on: atrvd-docker
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ruff
+        run: pip install "ruff>0.1.7"
+      - name: Run Ruff linting
+        run: ruff check --output-format=github
+
+  typecheck:
+    runs-on: atrvd-docker
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libatomic1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --extra dev
+        env:
+          UV_HTTP_TIMEOUT: 300
+      - name: Run Pyright
+        run: uv run pyright
+
+  validate:
+    runs-on: atrvd-docker
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Validate semver tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          if ! [[ $TAG =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "Invalid semver tag: v$TAG"
+            exit 1
+          fi
+          echo "Valid semver tag: v$TAG"
+
+  build:
+    runs-on: atrvd-docker
+    needs: [lint, typecheck, validate]
+    if: always() && (needs.lint.result == 'success') && (needs.typecheck.result == 'success') && (needs.validate.result == 'success' || needs.validate.result == 'skipped')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/org/graphiti-mcp
+          tags: |
+            # Semver tags from git tags (v1.0.0 -> 1.0.0, 1.0, 1)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            # Latest tag for deploy branch and semver tags
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/deploy' || startsWith(github.ref, 'refs/tags/v') }}
+            # SHA for traceability
+            type=sha,prefix=
+
+      - name: Build and push MCP server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: mcp_server/docker/Dockerfile.standalone
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_DATE=${{ github.event.repository.pushed_at || github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

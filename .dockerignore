@@ -1,0 +1,59 @@
+# Git
+.git/
+.github/
+.gitignore
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.egg-info/
+.eggs/
+*.egg
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation (keep README.md for package metadata)
+docs/
+*.md
+!README.md
+!server/README.md
+
+# Tests
+tests/
+*_test.py
+test_*.py
+conftest.py
+
+# Development files
+.env
+.env.*
+*.log
+Makefile
+
+# Docker (avoid recursive context)
+docker-compose*.yml
+docker-compose*.yaml
+
+# Misc
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
