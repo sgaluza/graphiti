@@ -67,5 +67,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the MCP server
-CMD ["uv", "run", "--no-sync", "main.py"]
+# Run the MCP server (use python directly, not uv run which creates venv)
+CMD ["python", "main.py"]
