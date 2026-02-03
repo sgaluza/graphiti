@@ -18,6 +18,7 @@ from graphiti_core.nodes import EpisodeType, EpisodicNode
 from graphiti_core.search.search_filters import SearchFilters
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
@@ -107,6 +108,48 @@ def configure_uvicorn_logging():
         uvicorn_logger.propagate = False
 
 
+def get_transport_security_settings() -> TransportSecuritySettings | None:
+    """
+    Build TransportSecuritySettings from MCP_ALLOWED_HOSTS environment variable.
+
+    MCP Python SDK requires both bare host and port wildcard patterns because:
+    - Bare host (e.g., 'example.com') matches requests without port in Host header
+    - Port wildcard (e.g., 'example.com:*') matches requests with explicit port
+
+    If MCP_ALLOWED_HOSTS is not set, returns None (SDK default behavior).
+
+    Returns:
+        TransportSecuritySettings configured with allowed hosts, or None if not configured.
+    """
+    allowed_hosts_str = os.getenv('MCP_ALLOWED_HOSTS', '')
+    if not allowed_hosts_str:
+        return None
+
+    allowed_hosts = [h.strip() for h in allowed_hosts_str.split(',') if h.strip()]
+    if not allowed_hosts:
+        return None
+
+    # Build allowed_origins from allowed_hosts (http:// prefix for each)
+    allowed_origins = []
+    for host in allowed_hosts:
+        if ':*' in host:
+            # For wildcard ports, create origin pattern
+            base = host.replace(':*', '')
+            allowed_origins.append(f'http://{base}:*')
+        else:
+            # For bare hosts, add both with and without default port
+            allowed_origins.append(f'http://{host}')
+            allowed_origins.append(f'http://{host}:*')
+
+    logging.getLogger(__name__).info(f'MCP transport security: allowed_hosts={allowed_hosts}')
+
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=allowed_hosts,
+        allowed_origins=allowed_origins,
+    )
+
+
 logger = logging.getLogger(__name__)
 
 # Create global config instance - will be properly initialized later
@@ -143,10 +186,11 @@ For optimal performance, ensure the database is properly configured and accessib
 API keys are provided for any language model operations.
 """
 
-# MCP server instance
+# MCP server instance with transport security from environment
 mcp = FastMCP(
     'Graphiti Agent Memory',
     instructions=GRAPHITI_MCP_INSTRUCTIONS,
+    transport_security=get_transport_security_settings(),
 )
 
 # Global services
