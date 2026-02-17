@@ -203,6 +203,9 @@ class QueueService:
             try:
                 logger.info(f'Processing episode {episode_uuid} for group {group_id}')
 
+                # Don't pass uuid to add_episode — it tries to look up existing node by UUID,
+                # but the episode hasn't been persisted yet. episode_uuid is only used
+                # for completion tracking in _pending_completions.
                 await self._graphiti_client.add_episode(
                     name=name,
                     episode_body=content,
@@ -211,7 +214,6 @@ class QueueService:
                     group_id=group_id,
                     reference_time=datetime.now(timezone.utc),
                     entity_types=entity_types,
-                    uuid=episode_uuid,
                 )
 
                 logger.info(f'Successfully processed episode {episode_uuid} for group {group_id}')
