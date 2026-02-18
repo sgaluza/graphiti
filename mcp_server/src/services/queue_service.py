@@ -242,7 +242,7 @@ class QueueService:
 
         except asyncio.TimeoutError:
             logger.error(f'Timeout waiting for episode "{name}" ({episode_uuid})')
-            raise TimeoutError(f'Episode processing timed out after {timeout}s')
+            raise TimeoutError(f'Episode processing timed out after {timeout}s') from None
 
         finally:
             # Cleanup
