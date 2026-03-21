@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 from .client import LLMClient
+from .claude_cli_client import ClaudeCliClient
 from .config import LLMConfig
 from .errors import RateLimitError
 from .openai_client import OpenAIClient
@@ -23,6 +24,7 @@ from .token_tracker import TokenUsage, TokenUsageTracker
 __all__ = [
     'LLMClient',
     'OpenAIClient',
+    'ClaudeCliClient',
     'LLMConfig',
     'RateLimitError',
     'TokenUsage',
